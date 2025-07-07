@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Lab - Halftone Dithering</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #6a6a6a;
+            --bg-tertiary: #7a7a7a;
+            --text-primary: #ffffff;
+            --text-secondary: #cccccc;
+            --accent: #FF9C39;
+            --accent-hover: #ffb866;
+            --border: rgba(255, 255, 255, 0.2);
+            --radius: 8px;
+            --radius-lg: 24px;
+            --shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            min-height: 100vh;
+            gap: 0;
+        }
+
+        .sidebar {
+            background: var(--bg-secondary);
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            border-right: 1px solid var(--border);
+        }
+
+        .main-content {
+            background: linear-gradient(180deg, #494544 0%, #888888 15%, #aa7755 35%, #FF6739 65%, #FF544F 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+        }
+
+        .logo {
+            color: var(--accent);
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 40px;
+        }
+
+        .section {
+            margin-bottom: 32px;
+        }
+
+        .section-title {
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+        }
+
+        .upload-area {
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius);
+            padding: 40px 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: var(--bg-tertiary);
+            margin-bottom: 16px;
+        }
+
+        .upload-area:hover {
+            border-color: var(--accent);
+            background: rgba(255, 156, 57, 0.05);
+        }
+
+        .upload-area.dragover {
+            border-color: var(--accent);
+            background: rgba(255, 156, 57, 0.1);
+            transform: scale(1.02);
+        }
+
+        .upload-area.loaded {
+            border-color: var(--accent);
+            background: rgba(255, 156, 57, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 32px;
+            margin-bottom: 12px;
+            opacity: 0.6;
+        }
+
+        .upload-text {
+            color: var(--text-primary);
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .upload-input {
+            display: none;
+        }
+
+        .control-group {
+            margin-bottom: 16px;
+        }
+
+        .control-label {
+            display: block;
+            margin-bottom: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: transparent;
+            padding: 4px 0;
+            border-radius: var(--radius);
+            border: none;
+        }
+
+        /* Standard HTML5 Range Slider with custom styling */
+        input[type="range"] {
+            flex: 1;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+            margin: 0;
+        }
+
+        input[type="range"]::-webkit-slider-track {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 9px;
+            height: 9px;
+            background: #ffffff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            margin-top: -2.5px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            width: 12px;
+            height: 12px;
+            margin-top: -4px;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 9px;
+            height: 9px;
+            background: #ffffff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        input[type="range"]::-moz-range-track {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            border: none;
+        }
+
+        .value-display {
+            min-width: 30px;
+            text-align: center;
+            font-weight: 600;
+            color: #ffffff;
+            font-size: 12px;
+        }
+
+        .color-input-container {
+            position: relative;
+            background: var(--bg-tertiary);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius);
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .color-swatch {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+        }
+
+        .color-code {
+            color: #ffffff;
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 12px;
+            flex: 1;
+        }
+
+        input[type="color"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+            outline: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 12px center;
+            background-repeat: no-repeat;
+            background-size: 16px;
+            padding-right: 40px;
+        }
+
+        select:focus {
+            border-color: var(--accent);
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #494544;
+            color: var(--text-primary);
+            border: 2px solid #494544;
+        }
+
+        .btn:hover {
+            background: #5a514c;
+            border-color: #5a514c;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: #ffffff;
+            color: #333333;
+            border: 2px solid #ffffff;
+        }
+
+        .btn-primary:hover {
+            background: #f0f0f0;
+            border-color: #f0f0f0;
+        }
+
+        .btn-full {
+            grid-column: 1 / -1;
+        }
+
+        .canvas-container {
+            background: var(--text-primary);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            position: relative;
+            max-width: 85vw;
+            max-height: 85vh;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            margin: 0 auto;
+        }
+
+        .canvas-info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 16px 24px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            display: none;
+            backdrop-filter: blur(10px);
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .video-controls {
+            display: none;
+            margin-top: 16px;
+        }
+
+        .video-controls.active {
+            display: block;
+        }
+
+        @media (max-width: 1200px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr;
+            }
+            
+            .sidebar {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .section {
+            animation: fadeIn 0.5s ease forwards;
+        }
+
+        .section:nth-child(2) { animation-delay: 0.1s; }
+        .section:nth-child(3) { animation-delay: 0.2s; }
+        .section:nth-child(4) { animation-delay: 0.3s; }
+        .section:nth-child(5) { animation-delay: 0.4s; }
+        .section:nth-child(6) { animation-delay: 0.5s; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="logo">Pixel Lab</div>
+            
+            <div class="section">
+                <div class="section-title">Upload Media</div>
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6;">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7,10 12,5 17,10"/>
+                            <line x1="12" y1="5" x2="12" y2="15"/>
+                        </svg>
+                    </div>
+                    <div class="upload-text">Drop image, video or GIF<br>or click to select</div>
+                    <input type="file" id="fileInput" class="upload-input" accept="image/*,video/*">
+                </div>
+                
+                <div class="video-controls" id="videoControls">
+                    <button class="btn btn-primary btn-full" id="playPauseBtn">Play/Pause</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Settings</div>
+                
+                <div class="color-input-container">
+                    <div class="color-swatch" style="background-color: #000000;" id="colorSwatch"></div>
+                    <div class="color-code" id="colorCode">#000000</div>
+                    <input type="color" id="dotColor" value="#000000">
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label" for="gridSize">Grid Size</label>
+                    <div class="slider-container">
+                        <input type="range" id="gridSize" min="3" max="50" value="15">
+                        <span class="value-display" id="gridSizeValue">15</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label" for="brightness">Brightness</label>
+                    <div class="slider-container">
+                        <input type="range" id="brightness" min="-100" max="100" value="0">
+                        <span class="value-display" id="brightnessValue">0</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label" for="gamma">Gamma</label>
+                    <div class="slider-container">
+                        <input type="range" id="gamma" min="0.1" max="3" step="0.1" value="1.0">
+                        <span class="value-display" id="gammaValue">1.0</span>
+                    </div>
+                </div>
+
+                <div class="section-title" style="margin-top: 24px;">Dithering Method</div>
+                <select id="ditherType">
+                    <option value="jarvis-judice-ninke">Jarvis-Judice-Ninke</option>
+                    <option value="none">No Dithering</option>
+                    <option value="floyd-steinberg">Floyd-Steinberg</option>
+                    <option value="stucki">Stucki</option>
+                    <option value="burkes">Burkes</option>
+                </select>
+            </div>
+
+            <div class="section">
+                <div class="button-grid">
+                    <button class="btn" id="exportFrames" disabled>Export Frames</button>
+                    <button class="btn btn-primary" id="exportPNG">Export PNG</button>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="canvas-container">
+                <canvas id="canvas"></canvas>
+                <div class="canvas-info" id="canvasInfo"></div>
+                <div class="loading" id="loading">Processing...</div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        class ModernHalftoneDithering {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.sourceImage = null;
+                this.sourceVideo = null;
+                this.isVideo = false;
+                this.isAnimatedGif = false;
+                this.animationId = null;
+                this.halftoneData = null;
+                this.originalImageData = null;
+                this.gifElement = null;
+                this.frameExportData = [];
+                this.isExportingFrames = false;
+                
+                this.setupEventListeners();
+                this.setupDragAndDrop();
+                this.loadDefaultImage();
+            }
+
+            setupEventListeners() {
+                // File input
+                document.getElementById('fileInput').addEventListener('change', (e) => this.handleFileSelect(e));
+                
+                // Sliders
+                const controls = ['gridSize', 'brightness', 'gamma'];
+                controls.forEach(id => {
+                    const element = document.getElementById(id);
+                    element.addEventListener('input', () => this.updateValueDisplay(id));
+                    element.addEventListener('input', () => this.debounceProcess());
+                });
+
+                // Other controls
+                document.getElementById('ditherType').addEventListener('change', () => this.process());
+                
+                const colorInput = document.getElementById('dotColor');
+                colorInput.addEventListener('change', (e) => {
+                    this.updateColorDisplay(e.target.value);
+                    this.process();
+                });
+
+                // Buttons
+                document.getElementById('playPauseBtn').addEventListener('click', () => this.togglePlayPause());
+                document.getElementById('exportPNG').addEventListener('click', () => this.exportPNG());
+                document.getElementById('exportFrames').addEventListener('click', () => this.exportAnimationFrames());
+            }
+
+            updateValueDisplay(id) {
+                const element = document.getElementById(id);
+                const valueElement = document.getElementById(id + 'Value');
+                if (element && valueElement) {
+                    valueElement.textContent = element.value;
+                }
+            }
+
+            updateColorDisplay(color) {
+                document.getElementById('colorSwatch').style.backgroundColor = color;
+                document.getElementById('colorCode').textContent = color.toUpperCase();
+            }
+
+            setupDragAndDrop() {
+                const uploadArea = document.getElementById('uploadArea');
+                
+                uploadArea.addEventListener('click', () => document.getElementById('fileInput').click());
+                
+                uploadArea.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.add('dragover');
+                });
+                
+                uploadArea.addEventListener('dragleave', () => {
+                    uploadArea.classList.remove('dragover');
+                });
+                
+                uploadArea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.remove('dragover');
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        this.handleFile(files[0]);
+                    }
+                });
+            }
+
+            handleFileSelect(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    this.handleFile(file);
+                }
+            }
+
+            handleFile(file) {
+                console.log('File type:', file.type, 'Name:', file.name);
+                
+                if (file.type.startsWith('image/')) {
+                    this.loadImage(file);
+                } else if (file.type.startsWith('video/')) {
+                    this.loadVideo(file);
+                } else {
+                    alert('Unsupported file format. Please upload an image (JPG, PNG, GIF, WebP) or video (MP4, WebM) file.');
+                }
+            }
+
+            loadImage(file) {
+                this.isVideo = false;
+                this.isAnimatedGif = false;
+                
+                if (this.animationId) {
+                    clearTimeout(this.animationId);
+                    cancelAnimationFrame(this.animationId);
+                    this.animationId = null;
+                }
+                
+                document.getElementById('videoControls').classList.remove('active');
+                document.getElementById('exportFrames').disabled = true;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        if (file.type === 'image/gif') {
+                            console.log('Detected GIF file, setting up animation...');
+                            this.setupAnimatedGif(img, e.target.result);
+                        } else {
+                            this.sourceImage = img;
+                            this.setupCanvas();
+                            this.process();
+                        }
+                        
+                        this.updateUploadArea(file);
+                    };
+                    
+                    img.onerror = () => {
+                        alert('Error loading image. Please try a different file.');
+                    };
+                    
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            loadVideo(file) {
+                this.isVideo = true;
+                this.isAnimatedGif = false;
+                
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                    this.animationId = null;
+                }
+                
+                console.log('Loading video:', file.name, file.type, file.size);
+                
+                const video = document.createElement('video');
+                video.muted = true;
+                video.loop = true;
+                video.playsInline = true;
+                video.controls = false;
+                video.preload = 'metadata';
+                
+                video.addEventListener('loadedmetadata', () => {
+                    console.log('Video metadata loaded:', video.videoWidth, 'x', video.videoHeight);
+                    this.sourceVideo = video;
+                    this.setupCanvas();
+                    
+                    document.getElementById('videoControls').classList.add('active');
+                    document.getElementById('exportFrames').disabled = false;
+                    
+                    video.play().then(() => {
+                        this.processVideo();
+                    }).catch(e => {
+                        console.log('Video autoplay prevented:', e);
+                    });
+                    
+                    this.updateUploadArea(file);
+                });
+                
+                video.addEventListener('error', (e) => {
+                    console.error('Video error:', e);
+                    alert('Error loading video. Please try a different MP4 or WebM file.');
+                });
+                
+                video.src = URL.createObjectURL(file);
+            }
+
+            setupAnimatedGif(img, dataUrl) {
+                this.isAnimatedGif = true;
+                
+                this.gifElement = document.createElement('img');
+                this.gifElement.src = dataUrl;
+                
+                this.sourceImage = img;
+                this.setupCanvas();
+                
+                document.getElementById('exportFrames').disabled = false;
+                
+                setTimeout(() => {
+                    this.processAnimatedGif();
+                }, 100);
+            }
+
+            processAnimatedGif() {
+                if (!this.isAnimatedGif) return;
+                
+                this.generateHalftone();
+                
+                if (this.isExportingFrames) {
+                    this.captureFrame();
+                }
+                
+                this.animationId = requestAnimationFrame(() => this.processAnimatedGif());
+            }
+
+            processVideo() {
+                if (!this.isVideo || !this.sourceVideo) return;
+                
+                if (this.sourceVideo.readyState >= 2 && !this.sourceVideo.paused) {
+                    this.generateHalftone();
+                    
+                    if (this.isExportingFrames) {
+                        this.captureFrame();
+                    }
+                }
+                
+                this.animationId = requestAnimationFrame(() => this.processVideo());
+            }
+
+            togglePlayPause() {
+                if (this.sourceVideo) {
+                    if (this.sourceVideo.paused) {
+                        this.sourceVideo.play().then(() => {
+                            this.processVideo();
+                        });
+                    } else {
+                        this.sourceVideo.pause();
+                        if (this.animationId) {
+                            cancelAnimationFrame(this.animationId);
+                            this.animationId = null;
+                        }
+                    }
+                }
+            }
+
+            updateUploadArea(file) {
+                const uploadArea = document.getElementById('uploadArea');
+                const fileName = file.name.length > 25 ? file.name.substring(0, 25) + '...' : file.name;
+                const fileSize = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+                
+                let mediaType = 'Image';
+                if (file.type.startsWith('video/')) mediaType = 'Video';
+                else if (file.type === 'image/gif') mediaType = 'GIF';
+                
+                uploadArea.innerHTML = `
+                    <div class="upload-icon" style="color: var(--accent);">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="16,12 12,8 8,12"/>
+                            <line x1="12" y1="16" x2="12" y2="8"/>
+                        </svg>
+                    </div>
+                    <div class="upload-text"><strong>${fileName}</strong></div>
+                    <div class="upload-subtext">${mediaType} • ${fileSize} • Click to change</div>
+                    <input type="file" id="fileInput" class="upload-input" accept="image/*,video/*">
+                `;
+                
+                uploadArea.classList.add('loaded');
+                
+                // Re-bind the file input event listener
+                document.getElementById('fileInput').addEventListener('change', (e) => this.handleFileSelect(e));
+            }
+
+            setupCanvas() {
+                let source;
+                if (this.isVideo) {
+                    source = this.sourceVideo;
+                } else if (this.isAnimatedGif) {
+                    source = this.sourceImage;
+                } else {
+                    source = this.sourceImage;
+                }
+                
+                if (!source) return;
+
+                const maxDisplaySize = Math.min(window.innerWidth - 450, window.innerHeight - 100); // Account for sidebar and padding
+                
+                let sourceWidth, sourceHeight;
+                if (this.isVideo) {
+                    sourceWidth = source.videoWidth;
+                    sourceHeight = source.videoHeight;
+                } else {
+                    sourceWidth = source.width || source.naturalWidth;
+                    sourceHeight = source.height || source.naturalHeight;
+                }
+
+                if (!sourceWidth || !sourceHeight) {
+                    sourceWidth = 800;
+                    sourceHeight = 800;
+                }
+
+                // Calculate square size (use smaller dimension for 1:1 crop)
+                const squareSize = Math.min(sourceWidth, sourceHeight);
+                
+                // Scale to fill more of the screen while maintaining 1:1 ratio
+                let displaySize = Math.min(squareSize, maxDisplaySize);
+
+                // Canvas is always square (1:1)
+                this.canvas.width = displaySize;
+                this.canvas.height = displaySize;
+                this.squareSize = squareSize;
+                
+                // Store crop parameters for proper 1:1 cropping from center
+                this.cropX = (sourceWidth - squareSize) / 2;
+                this.cropY = (sourceHeight - squareSize) / 2;
+                this.cropSize = squareSize;
+                
+                this.updateCanvasInfo();
+            }
+
+            updateCanvasInfo() {
+                const info = document.getElementById('canvasInfo');
+                let type = 'Image';
+                if (this.isVideo) type = 'Video';
+                else if (this.isAnimatedGif) type = 'Animated GIF';
+                
+                const size = this.squareSize || this.canvas.width;
+                info.textContent = `${type}: ${size} × ${size}`;
+            }
+
+            loadDefaultImage() {
+                const img = new Image();
+                img.onload = () => {
+                    this.sourceImage = img;
+                    this.setupCanvas();
+                    this.process();
+                };
+                img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjgwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNGRjlDMzkiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNmZjJmMDAiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2cpIi8+PGNpcmNsZSBjeD0iNDAwIiBjeT0iNDAwIiByPSIxNTAiIGZpbGw9IiMzMzMiIGZpbGwtb3BhY2l0eT0iMC4zIi8+PC9zdmc+';
+            }
+
+            debounceProcess() {
+                clearTimeout(this.debounceTimer);
+                this.debounceTimer = setTimeout(() => this.process(), 100);
+            }
+
+            process() {
+                if (!this.sourceImage && !this.sourceVideo) return;
+                
+                const loading = document.getElementById('loading');
+                loading.classList.add('active');
+                
+                setTimeout(() => {
+                    if (this.isAnimatedGif && this.animationId) {
+                        this.generateHalftone();
+                    } else {
+                        this.generateHalftone();
+                    }
+                    loading.classList.remove('active');
+                }, 10);
+            }
+
+            generateHalftone() {
+                let source;
+                if (this.isVideo) {
+                    source = this.sourceVideo;
+                } else if (this.isAnimatedGif && this.gifElement) {
+                    source = this.gifElement;
+                } else {
+                    source = this.sourceImage;
+                }
+                
+                if (!source) return;
+
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = this.canvas.width;
+                tempCanvas.height = this.canvas.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // Draw the cropped square portion (center crop to 1:1)
+                tempCtx.drawImage(
+                    source, 
+                    this.cropX, this.cropY, this.cropSize, this.cropSize,  // Source crop
+                    0, 0, this.canvas.width, this.canvas.height           // Destination
+                );
+
+                const imageData = tempCtx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                this.originalImageData = imageData;
+                const data = imageData.data;
+
+                const gridSize = this.getElementValue('gridSize', 15);
+                const brightness = this.getElementValue('brightness', 0);
+                const gamma = this.getElementValue('gamma', 1.0);
+                const ditherType = this.getElementValue('ditherType', 'jarvis-judice-ninke');
+                const dotColor = this.getElementValue('dotColor', '#000000');
+
+                this.processImageData(data, gridSize, brightness, gamma, ditherType, dotColor);
+            }
+
+            getElementValue(id, defaultValue) {
+                const element = document.getElementById(id);
+                if (!element) return defaultValue;
+                
+                if (element.type === 'range' || element.type === 'number') {
+                    return parseFloat(element.value) || defaultValue;
+                }
+                return element.value || defaultValue;
+            }
+
+            processImageData(data, gridSize, brightness, gamma, ditherType, dotColor) {
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+
+                const grayscale = this.convertToGrayscale(data, brightness, gamma);
+                
+                if (ditherType !== 'none') {
+                    this.applyDithering(grayscale, width, height, ditherType);
+                }
+
+                this.generateHalftonePattern(grayscale, width, height, gridSize, dotColor);
+            }
+
+            convertToGrayscale(data, brightness, gamma) {
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+                const grayscale = new Float32Array(width * height);
+
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    const pixelIndex = i / 4;
+
+                    let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                    gray += brightness;
+                    gray = Math.max(0, Math.min(255, gray));
+                    gray = 255 * Math.pow(gray / 255, 1 / gamma);
+                    
+                    grayscale[pixelIndex] = gray;
+                }
+
+                return grayscale;
+            }
+
+            applyDithering(grayscale, width, height, type) {
+                const threshold = 128;
+
+                switch (type) {
+                    case 'floyd-steinberg':
+                        this.applyFloydSteinberg(grayscale, width, height, threshold);
+                        break;
+                    case 'jarvis-judice-ninke':
+                        this.applyJarvisJudiceNinke(grayscale, width, height, threshold);
+                        break;
+                    case 'stucki':
+                        this.applyStucki(grayscale, width, height, threshold);
+                        break;
+                    case 'burkes':
+                        this.applyBurkes(grayscale, width, height, threshold);
+                        break;
+                }
+            }
+
+            applyFloydSteinberg(grayscale, width, height, threshold) {
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const idx = y * width + x;
+                        const oldPixel = grayscale[idx];
+                        const newPixel = oldPixel < threshold ? 0 : 255;
+                        const error = oldPixel - newPixel;
+                        
+                        grayscale[idx] = newPixel;
+                        
+                        if (x + 1 < width) grayscale[idx + 1] += error * 7/16;
+                        if (y + 1 < height) {
+                            if (x - 1 >= 0) grayscale[idx + width - 1] += error * 3/16;
+                            grayscale[idx + width] += error * 5/16;
+                            if (x + 1 < width) grayscale[idx + width + 1] += error * 1/16;
+                        }
+                    }
+                }
+            }
+
+            applyJarvisJudiceNinke(grayscale, width, height, threshold) {
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const idx = y * width + x;
+                        const oldPixel = grayscale[idx];
+                        const newPixel = oldPixel < threshold ? 0 : 255;
+                        const error = oldPixel - newPixel;
+                        
+                        grayscale[idx] = newPixel;
+                        
+                        if (x + 1 < width) grayscale[idx + 1] += error * 7/48;
+                        if (x + 2 < width) grayscale[idx + 2] += error * 5/48;
+                        
+                        if (y + 1 < height) {
+                            if (x - 2 >= 0) grayscale[idx + width - 2] += error * 3/48;
+                            if (x - 1 >= 0) grayscale[idx + width - 1] += error * 5/48;
+                            grayscale[idx + width] += error * 7/48;
+                            if (x + 1 < width) grayscale[idx + width + 1] += error * 5/48;
+                            if (x + 2 < width) grayscale[idx + width + 2] += error * 3/48;
+                        }
+                        
+                        if (y + 2 < height) {
+                            if (x - 2 >= 0) grayscale[idx + 2*width - 2] += error * 1/48;
+                            if (x - 1 >= 0) grayscale[idx + 2*width - 1] += error * 3/48;
+                            grayscale[idx + 2*width] += error * 5/48;
+                            if (x + 1 < width) grayscale[idx + 2*width + 1] += error * 3/48;
+                            if (x + 2 < width) grayscale[idx + 2*width + 2] += error * 1/48;
+                        }
+                    }
+                }
+            }
+
+            applyStucki(grayscale, width, height, threshold) {
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const idx = y * width + x;
+                        const oldPixel = grayscale[idx];
+                        const newPixel = oldPixel < threshold ? 0 : 255;
+                        const error = oldPixel - newPixel;
+                        
+                        grayscale[idx] = newPixel;
+                        
+                        if (x + 1 < width) grayscale[idx + 1] += error * 8/42;
+                        if (x + 2 < width) grayscale[idx + 2] += error * 4/42;
+                        
+                        if (y + 1 < height) {
+                            if (x - 2 >= 0) grayscale[idx + width - 2] += error * 2/42;
+                            if (x - 1 >= 0) grayscale[idx + width - 1] += error * 4/42;
+                            grayscale[idx + width] += error * 8/42;
+                            if (x + 1 < width) grayscale[idx + width + 1] += error * 4/42;
+                            if (x + 2 < width) grayscale[idx + width + 2] += error * 2/42;
+                        }
+                        
+                        if (y + 2 < height) {
+                            if (x - 2 >= 0) grayscale[idx + 2*width - 2] += error * 1/42;
+                            if (x - 1 >= 0) grayscale[idx + 2*width - 1] += error * 2/42;
+                            grayscale[idx + 2*width] += error * 4/42;
+                            if (x + 1 < width) grayscale[idx + 2*width + 1] += error * 2/42;
+                            if (x + 2 < width) grayscale[idx + 2*width + 2] += error * 1/42;
+                        }
+                    }
+                }
+            }
+
+            applyBurkes(grayscale, width, height, threshold) {
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const idx = y * width + x;
+                        const oldPixel = grayscale[idx];
+                        const newPixel = oldPixel < threshold ? 0 : 255;
+                        const error = oldPixel - newPixel;
+                        
+                        grayscale[idx] = newPixel;
+                        
+                        if (x + 1 < width) grayscale[idx + 1] += error * 8/32;
+                        if (x + 2 < width) grayscale[idx + 2] += error * 4/32;
+                        
+                        if (y + 1 < height) {
+                            if (x - 2 >= 0) grayscale[idx + width - 2] += error * 2/32;
+                            if (x - 1 >= 0) grayscale[idx + width - 1] += error * 4/32;
+                            grayscale[idx + width] += error * 8/32;
+                            if (x + 1 < width) grayscale[idx + width + 1] += error * 4/32;
+                            if (x + 2 < width) grayscale[idx + width + 2] += error * 2/32;
+                        }
+                    }
+                }
+            }
+
+            generateHalftonePattern(grayscale, width, height, gridSize, dotColor) {
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(0, 0, width, height);
+
+                const shapes = [];
+                
+                for (let y = 0; y < height; y += gridSize) {
+                    for (let x = 0; x < width; x += gridSize) {
+                        let sum = 0;
+                        let count = 0;
+                        
+                        for (let dy = 0; dy < gridSize && y + dy < height; dy++) {
+                            for (let dx = 0; dx < gridSize && x + dx < width; dx++) {
+                                const idx = (y + dy) * width + (x + dx);
+                                sum += grayscale[idx];
+                                count++;
+                            }
+                        }
+                        
+                        if (count === 0) continue;
+                        
+                        const average = sum / count;
+                        const intensity = 1 - (average / 255);
+                        const size = gridSize * intensity * 0.9;
+                        
+                        if (size > 0.5) {
+                            const centerX = x + gridSize / 2;
+                            const centerY = y + gridSize / 2;
+                            
+                            shapes.push({ x: centerX, y: centerY, size, color: dotColor });
+                        }
+                    }
+                }
+
+                this.halftoneData = { shapes, backgroundColor: '#ffffff', width, height };
+
+                shapes.forEach(shape => {
+                    this.drawRoundedDiamond(shape.x, shape.y, shape.size, shape.color);
+                });
+            }
+
+            drawRoundedDiamond(centerX, centerY, size, color) {
+                const halfSize = size / 2;
+                const cornerRadius = size * 0.1;
+                
+                this.ctx.save();
+                this.ctx.translate(centerX, centerY);
+                this.ctx.rotate(Math.PI / 4);
+                
+                this.ctx.fillStyle = color;
+                this.ctx.beginPath();
+                
+                const x = -halfSize;
+                const y = -halfSize;
+                const w = size;
+                const h = size;
+                
+                this.ctx.moveTo(x + cornerRadius, y);
+                this.ctx.lineTo(x + w - cornerRadius, y);
+                this.ctx.quadraticCurveTo(x + w, y, x + w, y + cornerRadius);
+                this.ctx.lineTo(x + w, y + h - cornerRadius);
+                this.ctx.quadraticCurveTo(x + w, y + h, x + w - cornerRadius, y + h);
+                this.ctx.lineTo(x + cornerRadius, y + h);
+                this.ctx.quadraticCurveTo(x, y + h, x, y + h - cornerRadius);
+                this.ctx.lineTo(x, y + cornerRadius);
+                this.ctx.quadraticCurveTo(x, y, x + cornerRadius, y);
+                
+                this.ctx.fill();
+                this.ctx.restore();
+            }
+
+            exportAnimationFrames() {
+                if (!this.isVideo && !this.isAnimatedGif) {
+                    alert('Animation frame export is only available for videos and animated GIFs.');
+                    return;
+                }
+
+                if (this.isExportingFrames) {
+                    this.isExportingFrames = false;
+                    document.getElementById('exportFrames').textContent = 'Export Frames';
+                    
+                    if (this.frameExportData.length > 0) {
+                        this.downloadFrameSequence();
+                    }
+                    return;
+                }
+
+                this.frameExportData = [];
+                this.isExportingFrames = true;
+                this.frameCount = 0;
+                this.maxFrames = 150;
+                
+                document.getElementById('exportFrames').textContent = `Stop (0)`;
+
+                setTimeout(() => {
+                    if (this.isExportingFrames) {
+                        document.getElementById('exportFrames').click();
+                    }
+                }, 5000);
+            }
+
+            captureFrame() {
+                if (!this.isExportingFrames || this.frameCount >= this.maxFrames) {
+                    return;
+                }
+
+                const frameData = this.canvas.toDataURL('image/png');
+                this.frameExportData.push({
+                    frame: this.frameCount,
+                    data: frameData,
+                    timestamp: performance.now()
+                });
+
+                this.frameCount++;
+                
+                document.getElementById('exportFrames').textContent = `Stop (${this.frameCount})`;
+
+                if (this.frameCount >= this.maxFrames) {
+                    setTimeout(() => {
+                        document.getElementById('exportFrames').click();
+                    }, 100);
+                }
+            }
+
+            async downloadFrameSequence() {
+                if (this.frameExportData.length === 0) {
+                    alert('No frames captured!');
+                    return;
+                }
+
+                try {
+                    if (typeof JSZip === 'undefined') {
+                        alert('JSZip library not loaded. Frame export unavailable.');
+                        return;
+                    }
+
+                    const zip = new JSZip();
+                    const frameFolder = zip.folder('halftone_frames');
+
+                    for (let i = 0; i < this.frameExportData.length; i++) {
+                        const frame = this.frameExportData[i];
+                        const frameNumber = String(i).padStart(4, '0');
+                        const imageData = frame.data.split(',')[1];
+                        
+                        frameFolder.file(`frame_${frameNumber}.png`, imageData, { base64: true });
+                    }
+
+                    const exportSize = this.squareSize || this.canvas.width;
+                    const metadata = {
+                        totalFrames: this.frameExportData.length,
+                        resolution: `${exportSize}x${exportSize}`,
+                        exported: new Date().toISOString(),
+                        format: 'PNG sequence',
+                        fps: Math.round(this.frameExportData.length / ((this.frameExportData[this.frameExportData.length - 1].timestamp - this.frameExportData[0].timestamp) / 1000))
+                    };
+
+                    frameFolder.file('metadata.json', JSON.stringify(metadata, null, 2));
+
+                    const content = await zip.generateAsync({ type: 'blob' });
+                    const url = URL.createObjectURL(content);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `halftone_animation_${this.frameExportData.length}frames.zip`;
+                    
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    URL.revokeObjectURL(url);
+
+                    console.log(`Animation exported: ${this.frameExportData.length} frames`);
+                    alert(`Successfully exported ${this.frameExportData.length} frames!\n\nUse these frames to create animations in After Effects, Lottie, or other tools.`);
+                } catch (error) {
+                    console.error('Frame export error:', error);
+                    alert('Error creating animation export. Please try again.');
+                }
+
+                this.frameExportData = [];
+            }
+
+            exportPNG() {
+                if (!this.canvas) {
+                    alert('No image to export');
+                    return;
+                }
+
+                try {
+                    const exportSize = this.squareSize || this.canvas.width;
+                    const exportCanvas = document.createElement('canvas');
+                    exportCanvas.width = exportSize;
+                    exportCanvas.height = exportSize;
+                    const exportCtx = exportCanvas.getContext('2d');
+                    
+                    // Draw the current canvas content at full resolution
+                    exportCtx.drawImage(this.canvas, 0, 0, exportSize, exportSize);
+                    
+                    const link = document.createElement('a');
+                    link.download = `halftone-${exportSize}x${exportSize}.png`;
+                    link.href = exportCanvas.toDataURL('image/png');
+                    
+                    // Trigger download
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    console.log(`PNG exported: ${exportSize}x${exportSize}`);
+                } catch (error) {
+                    console.error('Export error:', error);
+                    alert('Error exporting PNG. Please try again.');
+                }
+            }
+        }
+
+        // Initialize the application
+        const app = new ModernHalftoneDithering();
+    </script>
+</body>
+</html>
